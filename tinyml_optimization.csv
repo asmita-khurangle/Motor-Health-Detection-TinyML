@@ -1,0 +1,3 @@
+Model,Trees,Max_Depth,Accuracy,F1_Score,Size_Bytes,Size_KB
+Original Random Forest,200,Default,,,175550,171.44
+Compact Random Forest,50,8,1.0,1.0,6572,6.42
