@@ -1,0 +1,11 @@
+Metric,Value
+Total Windows,428.0
+Correct Predictions,428.0
+Incorrect Predictions,0.0
+Accuracy,1.0
+Precision (Weighted),1.0
+Recall (Weighted),1.0
+F1-Score (Weighted),1.0
+Normal Windows,276.0
+BPFI Windows,76.0
+BPFO Windows,76.0
