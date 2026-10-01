@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 
-# --------------------------------------------------
+
+# ============================================================
 # PAGE CONFIGURATION
-# --------------------------------------------------
+# ============================================================
 
 st.set_page_config(
     page_title="Motor Health Detection Using TinyML",
@@ -12,9 +13,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# --------------------------------------------------
-# FILE LOCATION
-# --------------------------------------------------
+
+# ============================================================
+# FILE LOCATION HANDLING
+# Works both locally and on Streamlit Cloud
+# ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -24,7 +27,7 @@ def find_file(filename):
         BASE_DIR / filename,
         BASE_DIR / "results" / filename,
         BASE_DIR.parent / filename,
-        BASE_DIR.parent / "results" / filename
+        BASE_DIR.parent / "results" / filename,
     ]
 
     for path in possible_paths:
@@ -34,325 +37,460 @@ def find_file(filename):
     return None
 
 
-# --------------------------------------------------
+# ============================================================
 # LOAD DATA
-# --------------------------------------------------
+# ============================================================
 
-maintenance_path = find_file("maintenance_decisions.csv")
-final_results_path = find_file("final_results.csv")
-tinyml_path = find_file("tinyml_optimization.csv")
+maintenance_file = find_file("maintenance_decisions.csv")
+final_results_file = find_file("final_results.csv")
+tinyml_file = find_file("tinyml_optimization.csv")
 
 
-if maintenance_path is None:
-    st.error("maintenance_decisions.csv was not found in the GitHub repository.")
+if maintenance_file is None:
+    st.error("maintenance_decisions.csv was not found.")
     st.stop()
 
-if final_results_path is None:
-    st.error("final_results.csv was not found in the GitHub repository.")
+if final_results_file is None:
+    st.error("final_results.csv was not found.")
     st.stop()
 
-if tinyml_path is None:
-    st.error("tinyml_optimization.csv was not found in the GitHub repository.")
+if tinyml_file is None:
+    st.error("tinyml_optimization.csv was not found.")
     st.stop()
 
 
-df = pd.read_csv(maintenance_path)
-final_results = pd.read_csv(final_results_path)
-tinyml_results = pd.read_csv(tinyml_path)
+maintenance_df = pd.read_csv(maintenance_file)
+final_results_df = pd.read_csv(final_results_file)
+tinyml_df = pd.read_csv(tinyml_file)
 
 
-# --------------------------------------------------
+# ============================================================
 # TITLE
-# --------------------------------------------------
+# ============================================================
 
 st.title("⚙️ Motor Health Detection Using TinyML")
 
-st.markdown(
+st.subheader("CWRU Bearing Dataset – Vibration-Based Motor Health Detection")
+
+st.write(
     """
-    **CWRU Bearing Dataset | Random Forest | TinyML Optimization |
-    Condition-Aware Explainable Maintenance Decision Layer**
-    """
+This dashboard presents the implemented CSE/software part of the project.
+The system processes vibration signals from the CWRU bearing dataset,
+extracts time-domain and frequency-domain features, and uses a Random
+Forest classifier to identify motor bearing conditions.
+"""
 )
 
-st.divider()
+
+# ============================================================
+# IMPORTANT EVALUATION NOTE
+# ============================================================
+
+st.info(
+    """
+**Evaluation basis:** 428 windows from the CWRU bearing dataset.
+
+The reported performance metrics represent the evaluated dataset/windows.
+They should not be interpreted as 100% accuracy on all real-world industrial motors.
+"""
+)
 
 
-# --------------------------------------------------
-# RESULTS
-# --------------------------------------------------
+# ============================================================
+# HELPER FUNCTION
+# ============================================================
 
-def get_result(name, default=0):
-    row = final_results[final_results["Metric"] == name]
+def get_result_value(label):
+    rows = final_results_df[
+        final_results_df.iloc[:, 0].astype(str).str.strip().str.lower()
+        == label.lower()
+    ]
 
-    if not row.empty:
-        return row.iloc[0]["Value"]
+    if not rows.empty:
+        return rows.iloc[0, 1]
 
-    return default
-
-
-accuracy = get_result("Accuracy")
-precision = get_result("Precision (Weighted)")
-recall = get_result("Recall (Weighted)")
-f1 = get_result("F1-Score (Weighted)")
+    return None
 
 
-# --------------------------------------------------
+# ============================================================
 # MODEL PERFORMANCE
-# --------------------------------------------------
+# ============================================================
 
-st.subheader("📊 Model Performance")
+st.header("📊 Model Performance")
+
+accuracy = get_result_value("Accuracy")
+precision = get_result_value("Precision (Weighted)")
+recall = get_result_value("Recall (Weighted)")
+f1 = get_result_value("F1-Score (Weighted)")
+
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Accuracy", f"{float(accuracy) * 100:.2f}%")
+    st.metric(
+        "Accuracy",
+        f"{float(accuracy) * 100:.0f}%" if accuracy is not None and float(accuracy) <= 1 else f"{float(accuracy):.0f}%"
+    )
 
 with col2:
-    st.metric("Precision", f"{float(precision) * 100:.2f}%")
+    st.metric(
+        "Precision",
+        f"{float(precision) * 100:.0f}%" if precision is not None and float(precision) <= 1 else f"{float(precision):.0f}%"
+    )
 
 with col3:
-    st.metric("Recall", f"{float(recall) * 100:.2f}%")
+    st.metric(
+        "Recall",
+        f"{float(recall) * 100:.0f}%" if recall is not None and float(recall) <= 1 else f"{float(recall):.0f}%"
+    )
 
 with col4:
-    st.metric("F1 Score", f"{float(f1) * 100:.2f}%")
+    st.metric(
+        "F1-Score",
+        f"{float(f1) * 100:.0f}%" if f1 is not None and float(f1) <= 1 else f"{float(f1):.0f}%"
+    )
 
-st.divider()
+
+st.caption(
+    "These performance metrics are calculated from the evaluated CWRU dataset windows."
+)
 
 
-# --------------------------------------------------
-# DATASET SUMMARY
-# --------------------------------------------------
+# ============================================================
+# DATASET INFORMATION
+# ============================================================
 
-st.subheader("📁 Dataset Summary")
+st.header("📁 Dataset Information")
 
-total_windows = len(df)
+total_windows = len(maintenance_df)
 
-condition_counts = df["Predicted Condition"].value_counts()
+normal_count = len(
+    maintenance_df[
+        maintenance_df["Actual Condition"].astype(str).str.upper() == "NORMAL"
+    ]
+)
 
-normal_count = condition_counts.get("Normal", 0)
-bpfi_count = condition_counts.get("BPFI", 0)
-bpfo_count = condition_counts.get("BPFO", 0)
+bpfi_count = len(
+    maintenance_df[
+        maintenance_df["Actual Condition"].astype(str).str.upper() == "BPFI"
+    ]
+)
 
-c1, c2, c3, c4 = st.columns(4)
+bpfo_count = len(
+    maintenance_df[
+        maintenance_df["Actual Condition"].astype(str).str.upper() == "BPFO"
+    ]
+)
 
-with c1:
-    st.metric("Total Windows", total_windows)
 
-with c2:
+d1, d2, d3, d4 = st.columns(4)
+
+with d1:
+    st.metric("Evaluated Windows", total_windows)
+
+with d2:
     st.metric("Normal", normal_count)
 
-with c3:
+with d3:
     st.metric("BPFI", bpfi_count)
 
-with c4:
+with d4:
     st.metric("BPFO", bpfo_count)
 
 
-# --------------------------------------------------
+# ============================================================
 # CONDITION DISTRIBUTION
-# --------------------------------------------------
+# ============================================================
 
-st.subheader("🔍 Predicted Condition Distribution")
+st.header("🔍 Predicted Condition Distribution")
 
-st.bar_chart(condition_counts)
+condition_counts = (
+    maintenance_df["Predicted Condition"]
+    .value_counts()
+    .rename_axis("Condition")
+    .reset_index(name="Count")
+)
+
+st.bar_chart(
+    condition_counts.set_index("Condition")
+)
 
 
-# --------------------------------------------------
+# ============================================================
 # RPM DISTRIBUTION
-# --------------------------------------------------
+# ============================================================
 
-if "RPM" in df.columns:
+if "RPM" in maintenance_df.columns:
 
-    st.subheader("⚙️ RPM Distribution")
+    st.header("⚡ Operating Speed Distribution")
 
-    rpm_counts = df["RPM"].value_counts().sort_index()
+    rpm_counts = (
+        maintenance_df["RPM"]
+        .value_counts()
+        .sort_index()
+        .rename_axis("RPM")
+        .reset_index(name="Windows")
+    )
 
-    st.bar_chart(rpm_counts)
+    st.line_chart(
+        rpm_counts.set_index("RPM")
+    )
 
 
-# --------------------------------------------------
+# ============================================================
 # TINYML OPTIMIZATION
-# --------------------------------------------------
+# ============================================================
 
-st.subheader("🧠 TinyML Model Optimization")
+st.header("🧠 TinyML Model Optimization")
 
 try:
 
-    original_size = tinyml_results.loc[
-        tinyml_results["Metric"] == "Original Model Size (KB)",
-        "Value"
-    ].iloc[0]
+    original_size = float(
+        tinyml_df["Original Model Size (KB)"].iloc[0]
+    )
 
-    compact_size = tinyml_results.loc[
-        tinyml_results["Metric"] == "Compact Model Size (KB)",
-        "Value"
-    ].iloc[0]
+    compact_size = float(
+        tinyml_df["Compact Model Size (KB)"].iloc[0]
+    )
 
-    reduction = tinyml_results.loc[
-        tinyml_results["Metric"] == "Model Size Reduction (%)",
-        "Value"
-    ].iloc[0]
+    size_reduction = float(
+        tinyml_df["Size Reduction (%)"].iloc[0]
+    )
 
-    compact_accuracy = tinyml_results.loc[
-        tinyml_results["Metric"] == "Compact Model Accuracy",
-        "Value"
-    ].iloc[0]
+    compact_accuracy = float(
+        tinyml_df["Compact Accuracy"].iloc[0]
+    )
 
-    compact_f1 = tinyml_results.loc[
-        tinyml_results["Metric"] == "Compact Model F1",
-        "Value"
-    ].iloc[0]
+    compact_f1 = float(
+        tinyml_df["Compact F1"].iloc[0]
+    )
 
     t1, t2, t3, t4, t5 = st.columns(5)
 
     with t1:
         st.metric(
             "Original Model",
-            f"{float(original_size):.2f} KB"
+            f"{original_size:.2f} KB"
         )
 
     with t2:
         st.metric(
             "Compact Model",
-            f"{float(compact_size):.2f} KB"
+            f"{compact_size:.2f} KB"
         )
 
     with t3:
         st.metric(
             "Size Reduction",
-            f"{float(reduction):.2f}%"
+            f"{size_reduction:.2f}%"
         )
 
     with t4:
         st.metric(
             "Compact Accuracy",
-            f"{float(compact_accuracy) * 100:.2f}%"
+            f"{compact_accuracy * 100:.0f}%"
+            if compact_accuracy <= 1
+            else f"{compact_accuracy:.0f}%"
         )
 
     with t5:
         st.metric(
             "Compact F1",
-            f"{float(compact_f1) * 100:.2f}%"
+            f"{compact_f1 * 100:.0f}%"
+            if compact_f1 <= 1
+            else f"{compact_f1:.0f}%"
         )
 
-except Exception as e:
-
-    st.warning(
-        "TinyML optimization metrics could not be displayed: "
-        + str(e)
-    )
+except Exception:
+    st.warning("TinyML optimization information could not be displayed.")
 
 
-st.divider()
-
-
-# --------------------------------------------------
-# MAINTENANCE DECISION LAYER
-# --------------------------------------------------
-
-st.subheader("🛠️ Condition-Aware Maintenance Decision Layer")
-
-if "Predicted Condition" in df.columns:
-
-    selected_condition = st.selectbox(
-        "Filter by predicted condition",
-        ["All"] + sorted(df["Predicted Condition"].dropna().unique().tolist())
-    )
-
-    filtered_df = df.copy()
-
-    if selected_condition != "All":
-        filtered_df = filtered_df[
-            filtered_df["Predicted Condition"] == selected_condition
-        ]
-
-else:
-
-    filtered_df = df
-
-
-# --------------------------------------------------
-# CONFIDENCE / STATUS
-# --------------------------------------------------
-
-if "Confidence (%)" in df.columns:
-
-    avg_confidence = df["Confidence (%)"].mean()
-
-    st.metric(
-        "Average Prediction Confidence",
-        f"{avg_confidence:.2f}%"
-    )
-
-
-if "Status" in df.columns:
-
-    status_counts = df["Status"].value_counts()
-
-    st.write("### Status Distribution")
-
-    st.bar_chart(status_counts)
-
-
-# --------------------------------------------------
-# MAINTENANCE RECORDS
-# --------------------------------------------------
-
-st.write("### Maintenance Decision Records")
-
-st.dataframe(
-    filtered_df,
-    use_container_width=True
+st.caption(
+    "The reported model-size values refer to the implemented Python model files; "
+    "final ESP32 firmware/memory usage requires hardware deployment."
 )
 
 
-# --------------------------------------------------
-# DOWNLOAD
-# --------------------------------------------------
+# ============================================================
+# MAINTENANCE DECISION SUMMARY
+# ============================================================
 
-csv_data = filtered_df.to_csv(index=False)
+st.header("🛠️ Condition-Aware Maintenance Decision")
+
+average_confidence = maintenance_df["Confidence (%)"].mean()
+
+warning_count = len(
+    maintenance_df[
+        maintenance_df["Status"].astype(str).str.upper() == "WARNING"
+    ]
+)
+
+normal_status_count = len(
+    maintenance_df[
+        maintenance_df["Status"].astype(str).str.upper() == "NORMAL"
+    ]
+)
+
+
+m1, m2, m3 = st.columns(3)
+
+with m1:
+    st.metric(
+        "Average Confidence",
+        f"{average_confidence:.2f}%"
+    )
+
+with m2:
+    st.metric(
+        "Warning Windows",
+        warning_count
+    )
+
+with m3:
+    st.metric(
+        "Normal Status Windows",
+        normal_status_count
+    )
+
+
+# ============================================================
+# CONDITION FILTER
+# ============================================================
+
+st.header("📋 Maintenance Decision Records")
+
+conditions = ["All"] + sorted(
+    maintenance_df["Predicted Condition"]
+    .dropna()
+    .astype(str)
+    .unique()
+    .tolist()
+)
+
+selected_condition = st.selectbox(
+    "Filter by predicted condition",
+    conditions
+)
+
+
+if selected_condition == "All":
+
+    filtered_df = maintenance_df.copy()
+
+else:
+
+    filtered_df = maintenance_df[
+        maintenance_df["Predicted Condition"].astype(str)
+        == selected_condition
+    ].copy()
+
+
+# ============================================================
+# DISPLAY TABLE
+# ============================================================
+
+st.dataframe(
+    filtered_df,
+    use_container_width=True,
+    hide_index=True
+)
+
+
+# ============================================================
+# DOWNLOAD DATA
+# ============================================================
 
 st.download_button(
     label="⬇️ Download Maintenance Decisions CSV",
-    data=csv_data,
-    file_name="maintenance_decisions_filtered.csv",
+    data=maintenance_df.to_csv(index=False),
+    file_name="maintenance_decisions.csv",
     mime="text/csv"
 )
 
 
-# --------------------------------------------------
-# IMPLEMENTATION SCOPE
-# --------------------------------------------------
+# ============================================================
+# INNOVATION
+# ============================================================
 
-st.divider()
+st.header("💡 Project Innovation")
 
-st.subheader("📌 Current Implementation Scope")
+st.subheader(
+    "Condition-Aware Explainable Maintenance Decision Layer"
+)
 
-st.markdown(
+st.write(
     """
-    **Implemented CSE/software components:**
+The innovation adds an explainable maintenance-decision layer on top of
+fault classification. Instead of showing only the detected fault, the
+system presents the predicted condition together with confidence,
+operating speed and a recommended maintenance action.
+"""
+)
 
-    - CWRU bearing vibration dataset processing
-    - Signal windowing and feature extraction
-    - Normal / BPFI / BPFO classification
-    - Random Forest machine-learning model
-    - File-wise model evaluation
-    - TinyML-oriented model optimization
-    - Condition-Aware Explainable Maintenance Decision Layer
-    - Interactive Streamlit dashboard
-
-    **Current dataset scope:**
-
-    The present validation uses vibration data from the CWRU bearing dataset.
-    Current/temperature/load sensor fusion and ESP32 hardware integration
-    are planned for the next implementation stage.
+st.write(
     """
+Example decision information includes:
+
+• Detected condition  
+• Prediction confidence  
+• Operating RPM  
+• Motor status  
+• Evidence from vibration features  
+• Recommended maintenance action
+"""
 )
 
 
-# --------------------------------------------------
+# ============================================================
+# CURRENT IMPLEMENTATION SCOPE
+# ============================================================
+
+st.header("🔧 Current Implementation Scope")
+
+st.write(
+    """
+### Completed CSE/Software Work
+
+✓ CWRU bearing dataset processing  
+✓ Vibration signal preprocessing  
+✓ Feature extraction  
+✓ Windowing  
+✓ Normal / BPFI / BPFO classification  
+✓ Random Forest model  
+✓ File-wise evaluation  
+✓ Performance analysis  
+✓ TinyML model optimization  
+✓ Condition-Aware Explainable Maintenance Decision Layer  
+✓ Interactive Streamlit dashboard
+"""
+)
+
+
+# ============================================================
+# LIMITATIONS AND FUTURE WORK
+# ============================================================
+
+st.header("🚀 Future Work")
+
+st.write(
+    """
+The next stage is hardware and IoT integration:
+
+• ESP32 implementation  
+• Real-time vibration sensor acquisition  
+• Motor hardware testing  
+• Additional sensor integration such as current and temperature  
+• Embedded TinyML deployment  
+• MQTT communication  
+• Real-time IoT monitoring  
+• Validation under different loads and speeds
+"""
+)
+
+
+# ============================================================
 # FOOTER
-# --------------------------------------------------
+# ============================================================
 
 st.divider()
 
